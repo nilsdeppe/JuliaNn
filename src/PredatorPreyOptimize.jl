@@ -157,12 +157,8 @@ function learn_initial_conditions(true_parameters)
   # Set up the optimization problem with our loss function and initial guess
   adtype = AutoForwardDiff()
   optf = OptimizationFunction((x, _) -> loss_initial_conditions(x), adtype)
-  optprob = OptimizationProblem(
-    optf,
-    u_0_guess,
-    lb = [0.1, 0.1],
-    ub = [5.5, 5.5],
-  )
+  optprob =
+    OptimizationProblem(optf, u_0_guess, lb = [0.1, 0.1], ub = [5.5, 5.5])
 
   # Optimize the ODE parameters for best fit to our data
   pfinal = solve(
@@ -192,12 +188,17 @@ function learn_parameters_and_initial_conditions()
   # optimizer is working in Greek space, we will be passed the parameters, then
   # we solve the ODE over time, and then we compute the difference between the
   # data and the solution using some suitable norm (e.g. L2).
-  function loss_parameters_and_initial_conditions(new_initial_conditions_and_parameters)
+  function loss_parameters_and_initial_conditions(
+    new_initial_conditions_and_parameters,
+  )
     # Create the new ODEProblem with the current parameters
     # new_problem = remake(problem, p = new_parameters)
-    new_problem =
-      ODEProblem(pred_prey!, new_initial_conditions_and_parameters[1:2], t_span,
-          new_initial_conditions_and_parameters[3:end])
+    new_problem = ODEProblem(
+      pred_prey!,
+      new_initial_conditions_and_parameters[1:2],
+      t_span,
+      new_initial_conditions_and_parameters[3:end],
+    )
     # Solve it, dumping at the times we have data.
     sol =
       solve(new_problem, Vern9(), reltol = 1e-13, abstol = 1e-30, saveat = 1)
@@ -214,7 +215,10 @@ function learn_parameters_and_initial_conditions()
   #
   # Set up the optimization problem with our loss function and initial guess
   adtype = AutoForwardDiff()
-  optf = OptimizationFunction((x, _) -> loss_parameters_and_initial_conditions(x), adtype)
+  optf = OptimizationFunction(
+    (x, _) -> loss_parameters_and_initial_conditions(x),
+    adtype,
+  )
   optprob = OptimizationProblem(
     optf,
     initial_guess,
@@ -231,10 +235,12 @@ function learn_parameters_and_initial_conditions()
     reltol = 1.0e-13,
     maxiters = 200,
   )
-  print("Final loss function: ",
-        loss_parameters_and_initial_conditions(pfinal.u), "\n")
-  print("Final initial conditions:   ", pfinal.u[1:2], pfinal.u[3:end],
-      "\n")
+  print(
+    "Final loss function: ",
+    loss_parameters_and_initial_conditions(pfinal.u),
+    "\n",
+  )
+  print("Final initial conditions:   ", pfinal.u[1:2], pfinal.u[3:end], "\n")
   print("Correct initial conditions: ", u_0, p_true)
   return nothing
 end
