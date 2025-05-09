@@ -52,7 +52,9 @@ for i in 1:size(initial_sol.u)[1]
   x_data[i] = initial_sol.u[i][1]
   y_data[i] = initial_sol.u[i][2]
 end
-xy_data = vcat(x_data, y_data)
+# Julia is _insane_ and we need to use the ' operator to convert our 1d arrays
+# (a vector) into a 1xN matrix.
+xy_data = vcat(x_data', y_data')
 
 # Plot the initial solution that we will try to search for.
 initial_plot = plot(initial_sol, title = "Rabbits vs Wolves")
@@ -111,6 +113,67 @@ function learn_parameters()
     lb = [0.5, 0.5, 0.5, 0.5],
     ub = [5.5, 5.5, 5.5, 5.5],
   )
+
+  # Optimize the ODE parameters for best fit to our data
+  pfinal = solve(
+    optprob,
+    Optim.BFGS(),
+    # callback = callback_learn_parameters,
+    abstol = 1.0e-60,
+    reltol = 1.0e-13,
+    maxiters = 200,
+  )
+  α, β, γ, δ = round.(pfinal, digits = 1)
+  print("Final params:   ", pfinal)
+  print("Correct params: ", p_true)
+  return nothing
+end
+
+function learn_parameters_no_box()
+  function loss_learn_parameters_no_box(new_parameters)
+    lower_bound = 0.5
+    upper_bound = 5.5
+    scale_factor = 1.0e2
+    bound_loss = (
+      scale_factor * abs2(
+        min(0, (new_parameters[1] - lower_bound)) +
+        min(0, (new_parameters[2] - lower_bound)) +
+        min(0, (new_parameters[3] - lower_bound)) +
+        min(0, (new_parameters[4] - lower_bound)),
+      ) +
+      scale_factor * abs2(
+        max(0, (new_parameters[1] - upper_bound)) +
+        max(0, (new_parameters[2] - upper_bound)) +
+        max(0, (new_parameters[3] - upper_bound)) +
+        max(0, (new_parameters[4] - upper_bound)),
+      )
+    )
+    # Because the ODE solve is unstable for values outside of our bounds,
+    # we don't do the ODE solve at all in those cases.
+    if bound_loss > 0.0
+      return bound_loss
+    end
+
+    # Create the new ODEProblem with the current parameters
+    # new_problem = remake(problem, p = new_parameters)
+    new_problem = ODEProblem(pred_prey!, u_0, t_span, new_parameters)
+    # Solve it, dumping at the times we have data.
+    sol =
+      solve(new_problem, Vern9(), reltol = 1e-13, abstol = 1e-30, saveat = 1)
+    # For the loss, just sum up the squares of the differences and take the
+    # square root. The square root is important since otherwise we are counting
+    # the digits/accuracy of the square of the problem.
+    ode_loss = sqrt(sum(abs2, sol .- xy_data))
+    loss = ode_loss
+    return loss
+  end
+  # This function learns the α,β,γ,δ parameters of the Lotka-Volterra equation.
+  #
+  # Set up the optimization problem with our loss function and initial guess
+  adtype = AutoForwardDiff()
+  p_guess = [1.5, 1.0, 2.71, 1.5]
+  optf = OptimizationFunction((x, _) -> loss_learn_parameters_no_box(x), adtype)
+  optprob = OptimizationProblem(optf, p_guess)
 
   # Optimize the ODE parameters for best fit to our data
   pfinal = solve(
@@ -245,6 +308,8 @@ function learn_parameters_and_initial_conditions()
   return nothing
 end
 
-learn_parameters()
-learn_initial_conditions(p_true)
-learn_parameters_and_initial_conditions()
+learn_parameters_no_box()
+
+# learn_parameters()
+# learn_initial_conditions(p_true)
+# learn_parameters_and_initial_conditions()
